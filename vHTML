@@ -1,0 +1,132 @@
+import requests
+from datetime import datetime
+from zoneinfo import ZoneInfo
+import os
+
+# Try to import tzlocal to get the full local timezone name
+try:
+    from tzlocal import get_localzone_name
+    LOCAL_TIMEZONE = ZoneInfo(get_localzone_name())
+except ImportError:
+    print("tzlocal not installed, falling back to America/Los_Angeles")
+    LOCAL_TIMEZONE = ZoneInfo("America/Los_Angeles")
+
+def get_team_data(team_id):
+    url = f'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{team_id}'
+    r = requests.get(url)
+    team = r.json()['team']
+    name = team['displayName']
+    record = team['record']['items'][0]['summary']
+    logo_url = team['logos'][0]['href'] if 'logos' in team and team['logos'] else ''
+    return name, record, logo_url
+
+def get_next_game(team_id):
+    url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{team_id}/schedule"
+    r = requests.get(url)
+    events = r.json()['events']
+
+    now = datetime.now().astimezone()
+    for event in events:
+        game_time_str = event['date']
+        game_time = datetime.fromisoformat(game_time_str.replace('Z', '+00:00'))
+        if game_time > now:
+            return event
+    return None
+
+def generate_html(team1, team2, game_time):
+    game_time_local = game_time.astimezone(LOCAL_TIMEZONE)
+    time_str = game_time_local.strftime("%A, %B %d at %I:%M %p (%Z)")
+
+    html_content = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NBA Matchup</title>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            background-color: white;
+            color: #333;
+            text-align: center;
+            padding: 30px;
+        }}
+        .container {{
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+        }}
+        .team {{
+            text-align: center;
+        }}
+        .team-logo {{
+            width: 150px;
+            height: 150px;
+            object-fit: contain;
+        }}
+        .vs {{
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #555;
+        }}
+        .record {{
+            color: gray;
+            font-size: 1rem;
+        }}
+        .game-time {{
+            margin-top: 30px;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }}
+    </style>
+</head>
+<body>
+    <h1>NBA Matchup</h1>
+    <div class="container">
+        <div class="team">
+            <img src="{team1[2]}" alt="{team1[0]} logo" class="team-logo" />
+            <h2>{team1[0]}</h2>
+            <p class="record">{team1[1]}</p>
+        </div>
+        <div class="vs">VS</div>
+        <div class="team">
+            <img src="{team2[2]}" alt="{team2[0]} logo" class="team-logo" />
+            <h2>{team2[0]}</h2>
+            <p class="record">{team2[1]}</p>
+        </div>
+    </div>
+    <div class="game-time">{time_str}</div>
+</body>
+</html>
+"""
+    return html_content
+
+def main():
+    TEAM_ID = 18  # Example: Knicks
+    next_event = get_next_game(TEAM_ID)
+
+    if not next_event:
+        print("No upcoming games found.")
+        return
+
+    competitors = next_event['competitions'][0]['competitors']
+    team1_id = int(competitors[0]['id'])
+    team2_id = int(competitors[1]['id'])
+
+    team1 = get_team_data(team1_id)
+    team2 = get_team_data(team2_id)
+
+    game_time_str = next_event['date']
+    game_time = datetime.fromisoformat(game_time_str.replace('Z', '+00:00'))
+
+    html = generate_html(team1, team2, game_time)
+
+    with open("nba_matchup.html", "w", encoding="utf-8") as f:
+        f.write(html)
+
+    print("HTML file 'nba_matchup.html' generated successfully.")
+
+if __name__ == "__main__":
+    main()
