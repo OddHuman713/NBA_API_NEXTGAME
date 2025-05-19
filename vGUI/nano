@@ -78,7 +78,7 @@ def display_gui(team1, team2, game_time):
     root.mainloop()
 
 def main():
-    TEAM_ID = 18  # Example: Knicks
+    TEAM_ID = 22  # Example ID: Blazers
     next_event = get_next_game(TEAM_ID)
 
     if not next_event:
