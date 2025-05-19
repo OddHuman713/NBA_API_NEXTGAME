@@ -1,0 +1,101 @@
+import requests
+from datetime import datetime
+from zoneinfo import ZoneInfo
+import os
+import tkinter as tk
+from PIL import Image, ImageTk
+from io import BytesIO
+
+# Auto-detect system timezone
+LOCAL_TIMEZONE = ZoneInfo(os.popen("cat /etc/timezone").read().strip())
+
+def get_team_data(team_id):
+    url = f'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{team_id}'
+    r = requests.get(url)
+    team = r.json()['team']
+    name = team['displayName']
+    record = team['record']['items'][0]['summary']
+    logo_url = team['logos'][0]['href'] if 'logos' in team and team['logos'] else ''
+    return name, record, logo_url
+
+def get_next_game(team_id):
+    url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{team_id}/schedule"
+    r = requests.get(url)
+    events = r.json()['events']
+
+    now = datetime.now().astimezone()
+    for event in events:
+        game_time_str = event['date']
+        game_time = datetime.fromisoformat(game_time_str.replace('Z', '+00:00'))
+        if game_time > now:
+            return event
+    return None
+
+def display_gui(team1, team2, game_time):
+    root = tk.Tk()
+    root.title("NBA Matchup")
+    root.configure(bg='white')
+
+    # Game time
+    game_time_local = game_time.astimezone(LOCAL_TIMEZONE)
+    time_str = game_time_local.strftime("%A, %B %d at %I:%M %p (%Z)")
+
+    # Load logos
+    def load_logo(url):
+        response = requests.get(url)
+        img_data = response.content
+        img = Image.open(BytesIO(img_data)).resize((150, 150))
+        return ImageTk.PhotoImage(img)
+
+    logo1 = load_logo(team1[2])
+    logo2 = load_logo(team2[2])
+
+    # Layout
+    frame = tk.Frame(root, bg='white', padx=20, pady=20)
+    frame.pack()
+
+    left = tk.Frame(frame, bg='white')
+    left.pack(side="left", padx=10)
+    tk.Label(left, image=logo1, bg='white').pack()
+    tk.Label(left, text=team1[0], font=("Arial", 14), bg='white').pack()
+    tk.Label(left, text=team1[1], font=("Arial", 12), fg='gray', bg='white').pack()
+
+    tk.Label(frame, text="VS", font=("Arial", 24), bg='white').pack(side="left", padx=10)
+
+    right = tk.Frame(frame, bg='white')
+    right.pack(side="left", padx=10)
+    tk.Label(right, image=logo2, bg='white').pack()
+    tk.Label(right, text=team2[0], font=("Arial", 14), bg='white').pack()
+    tk.Label(right, text=team2[1], font=("Arial", 12), fg='gray', bg='white').pack()
+
+    # Game time
+    tk.Label(root, text=time_str, font=("Arial", 14), bg='white', pady=10).pack()
+
+    # Keep references to images
+    root.logo1 = logo1
+    root.logo2 = logo2
+
+    root.mainloop()
+
+def main():
+    TEAM_ID = 18  # Example: Knicks
+    next_event = get_next_game(TEAM_ID)
+
+    if not next_event:
+        print("No upcoming games found.")
+        return
+
+    competitors = next_event['competitions'][0]['competitors']
+    team1_id = int(competitors[0]['id'])
+    team2_id = int(competitors[1]['id'])
+
+    team1 = get_team_data(team1_id)
+    team2 = get_team_data(team2_id)
+
+    game_time_str = next_event['date']
+    game_time = datetime.fromisoformat(game_time_str.replace('Z', '+00:00'))
+
+    display_gui(team1, team2, game_time)
+
+if __name__ == "__main__":
+    main()
